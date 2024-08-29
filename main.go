@@ -290,26 +290,37 @@ func main() {
 	switch choice {
 	case 1:
 		var t string
-		fmt.Println("Enter a type to scan: (int64,int32,int16 and byte)")
+		fmt.Println("Enter a data type to scan: (int64,int32,int16 and byte)")
 		fmt.Scanf("%s\n", &t)
 		ReadMemory(proc.ProcessID, t)
 	case 2:
 		var t string
 		var val int
-		fmt.Println("Enter a type to scan: (int64,int32,int16 and byte)")
+		fmt.Println("Enter a data type to scan: (int64,int32,int16 and byte)")
 		fmt.Scanf("%s\n", &t)
 		fmt.Println("Enter a value to search:")
 		fmt.Scanf("%d\n", &val)
 		ReadMemoryWithOffsets(proc.ProcessID, t, val)
 	case 3:
-		var addr string
+		var addr uintptr
 		var t string
-		fmt.Println("Enter an address to scan: (Example: 0x44fcfda...)")
-		fmt.Scanf("%s\n", &addr)
-		ReadSpecificMemory(proc.ProcessID, uintptr(addr), t)
+		fmt.Println("Enter an address to scan: (Example: 0xd16c3ff8bc)")
+		fmt.Scanf("%v\n", &addr)
+		fmt.Println("Enter a data type to scan: (int64,int32,int16 and byte)")
+		fmt.Scanf("%s\n", &t)
+		ReadSpecificMemory(proc.ProcessID, addr, t)
+	case 4:
+		var addr uintptr
+		var t string
+		var val int
+		fmt.Println("Enter an address to write: (Example: 0x98ac7ffc4c) ")
+		fmt.Scanf("%v\n", &addr)
+		fmt.Println("Enter a data type to write: (int64,int32,int16 and byte)")
+		fmt.Scanf("%s\n", &t)
+		fmt.Println("Enter a data to write:")
+		fmt.Scanf("%d\n", &val)
+		WriteSpecificMemory(proc.ProcessID, addr, t, val)
+	default:
+		fmt.Printf("Enter a valid operation.\n")
 	}
-	//ReadMemory(proc.ProcessID, "int64")
-	//ReadSpecificMemory(proc.ProcessID, 0xd16c3ff8bc, "int64")
-	//WriteSpecificMemory(proc.ProcessID, 0x98ac7ffc4c, "int32", 55)
-	//ReadMemoryWithOffsets(proc.ProcessID, "int32", 41)
 }
