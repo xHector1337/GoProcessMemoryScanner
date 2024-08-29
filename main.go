@@ -19,7 +19,7 @@ var OpenProcess = kernel32.NewProc("OpenProcess")
 var ReadProcessMemory = kernel32.NewProc("ReadProcessMemory")
 var PROCESS_ALL_ACCESS uintptr = 0x1F0FFF
 
-func ReadMemoryWithOffsets(pid uint32, readType string) {
+func ReadMemoryWithOffsets(pid uint32, readType string, dataToBeFound int) {
 	if readType != "int64" && readType != "int32" && readType != "int16" && readType != "byte" {
 		fmt.Printf("Available types are int64, int32, int16 and byte.")
 		return
@@ -29,6 +29,7 @@ func ReadMemoryWithOffsets(pid uint32, readType string) {
 		fmt.Printf("[-] OpenProcess error: %s", err)
 		return
 	}
+	defer windows.CloseHandle(windows.Handle(k))
 	var data value
 	var addr uintptr = 0
 	var mem windows.MemoryBasicInformation
@@ -45,9 +46,8 @@ func ReadMemoryWithOffsets(pid uint32, readType string) {
 	}
 	var VirtualQueryEx = kernel32.NewProc("VirtualQueryEx")
 	for {
-		var m, _, err1 = VirtualQueryEx.Call(k, addr, uintptr(unsafe.Pointer(&mem)), unsafe.Sizeof(mem))
+		var m, _, _ = VirtualQueryEx.Call(k, addr, uintptr(unsafe.Pointer(&mem)), unsafe.Sizeof(mem))
 		if m == 0 {
-			fmt.Printf("[-] VirtualQueryEx error: %s", err1)
 			break
 		}
 		if (mem.Protect == windows.PAGE_EXECUTE_READ || mem.Protect == windows.PAGE_EXECUTE_READWRITE || mem.Protect == windows.PAGE_READWRITE || mem.Protect == windows.PAGE_READONLY) && mem.RegionSize != 0 && mem.State == windows.MEM_COMMIT {
@@ -57,19 +57,43 @@ func ReadMemoryWithOffsets(pid uint32, readType string) {
 					var a, _, err2 = ReadProcessMemory.Call(k, currentAddr, uintptr(unsafe.Pointer(&data.eight)), unsafe.Sizeof(data.eight), uintptr(unsafe.Pointer(&readBytes)))
 					if a == 0 {
 						fmt.Printf("[-] ReadProcessMemory error: %s", err2)
+						return
 					}
-					fmt.Printf("[+] Read %d bytes from 0x%x value: %d\n", readBytes, addr, data.eight)
+					if readBytes > 0 && data.eight == int64(dataToBeFound) {
+						fmt.Printf("[+] Read %d bytes from 0x%x value: %d\n", readBytes, currentAddr, data.eight)
+					}
 				} else if readType == "int32" {
-					var a, _, err2 = ReadProcessMemory.Call(k, currentAddr, uintptr(unsafe.Pointer(&data.eight)), unsafe.Sizeof(data.four), uintptr(unsafe.Pointer(&readBytes)))
+					var a, _, err2 = ReadProcessMemory.Call(k, currentAddr, uintptr(unsafe.Pointer(&data.four)), unsafe.Sizeof(data.four), uintptr(unsafe.Pointer(&readBytes)))
 					if a == 0 {
 						fmt.Printf("[-] ReadProcessMemory error: %s", err2)
+						return
 					}
-					fmt.Printf("[+] Read %d bytes from 0x%x value: %d\n", readBytes, addr, data.four)
+					if readBytes > 0 && data.four == int32(dataToBeFound) {
+						fmt.Printf("[+] Read %d bytes from 0x%x value: %d\n", readBytes, currentAddr, data.four)
+					}
+				} else if readType == "int16" {
+					var a, _, err2 = ReadProcessMemory.Call(k, currentAddr, uintptr(unsafe.Pointer(&data.two)), unsafe.Sizeof(data.two), uintptr(unsafe.Pointer(&readBytes)))
+					if a == 0 {
+						fmt.Printf("[-] ReadProcessMemory error: %s", err2)
+						return
+					}
+					if readBytes > 0 && data.two == int16(dataToBeFound) {
+						fmt.Printf("[+] Read %d bytes from 0x%x value: %d\n", readBytes, currentAddr, data.two)
+					}
+				} else if readType == "byte" {
+					var f, _, err2 = ReadProcessMemory.Call(k, currentAddr, uintptr(unsafe.Pointer(&data.char)), unsafe.Sizeof(data.char), uintptr(unsafe.Pointer(&readBytes)))
+					if f == 0 {
+						fmt.Printf("[-] ReadProcessMemory error: %s", err2)
+						return
+					}
+					if readBytes > 0 && data.char == byte(dataToBeFound) {
+						fmt.Printf("[+] Read %d bytes from 0x%x value: %d\n", readBytes, currentAddr, data.char)
+					}
 				}
 			}
 		}
+		addr = mem.BaseAddress + mem.RegionSize
 	}
-
 }
 
 func WriteSpecificMemory(pid uint32, addr uintptr, dataType string, data int) {
@@ -229,15 +253,15 @@ func ReadMemory(pid uint32, readType string) {
 				}
 			}
 		}
-
 		addr = mem.BaseAddress + mem.RegionSize
 	}
 }
 
 func main() {
 	var proc windows.ProcessEntry32
-	var processName string = "a.exe"
-	//fmt.Scanf("%s\n", processName)
+	var processName string
+	fmt.Println("Enter process name you want to scan:")
+	fmt.Scanf("%s\n", &processName)
 	proc.Size = uint32(unsafe.Sizeof(windows.ProcessEntry32{}))
 	var CreateToolhelp32Snapshot = kernel32.NewProc("CreateToolhelp32Snapshot")
 	var v, _, err = CreateToolhelp32Snapshot.Call(windows.TH32CS_SNAPALL, 0)
@@ -260,8 +284,32 @@ func main() {
 		}
 	}
 	fmt.Printf("[+] Process Name: %s\n[+] Process id: %d\n", windows.UTF16ToString(proc.ExeFile[:]), proc.ProcessID)
+	var choice int
+	fmt.Printf("Available operations are:\n1\tScan/read memory base addresses.\n2\tSearch memory for a specific value.\n3\tRead a value at specific memory address.\n4\tWrite a new value to a specific memory address.\nEnter your choice: (1,2,3,4)\n")
+	fmt.Scanf("%d\n", &choice)
+	switch choice {
+	case 1:
+		var t string
+		fmt.Println("Enter a type to scan: (int64,int32,int16 and byte)")
+		fmt.Scanf("%s\n", &t)
+		ReadMemory(proc.ProcessID, t)
+	case 2:
+		var t string
+		var val int
+		fmt.Println("Enter a type to scan: (int64,int32,int16 and byte)")
+		fmt.Scanf("%s\n", &t)
+		fmt.Println("Enter a value to search:")
+		fmt.Scanf("%d\n", &val)
+		ReadMemoryWithOffsets(proc.ProcessID, t, val)
+	case 3:
+		var addr string
+		var t string
+		fmt.Println("Enter an address to scan: (Example: 0x44fcfda...)")
+		fmt.Scanf("%s\n", &addr)
+		ReadSpecificMemory(proc.ProcessID, uintptr(addr), t)
+	}
 	//ReadMemory(proc.ProcessID, "int64")
 	//ReadSpecificMemory(proc.ProcessID, 0xd16c3ff8bc, "int64")
 	//WriteSpecificMemory(proc.ProcessID, 0x98ac7ffc4c, "int32", 55)
-	ReadMemoryWithOffsets(proc.ProcessID, "int64")
+	//ReadMemoryWithOffsets(proc.ProcessID, "int32", 41)
 }
